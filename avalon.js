@@ -226,7 +226,10 @@
         bind: function(el, type, fn, phase) {// 绑定事件
             function callback(e) {
                 var ex = e.target ? e : fixEvent(e || window.event)
-                var ret = fn.call(el, e)
+//                var ret = fn.call(el, e)
+                //绑定event对象到vmodel上
+                el.$vmodel.$event = ex;
+                var ret = fn.call(el)
                 if (ret === false) {
                     ex.preventDefault()
                     ex.stopPropagation()
@@ -1270,11 +1273,12 @@
         vmodel.$events = {} //VB对象的方法里的this并不指向自身，需要使用bind处理一下
         vmodel.$id = generateID()
         vmodel.$accessor = accessores
+        vmodel.$event = null //为真正的event预留
         for (var i in Observable) {
             vmodel[i] = Observable[i].bind(vmodel)
         }
         vmodel.hasOwnProperty = function(name) {
-            return name in vmodel.$model
+            return name in vmodel.$model || name in vmodel
         }
         return vmodel
     }
@@ -1409,6 +1413,9 @@
         elem = elem || root
         var vmodels = vmodel ? [].concat(vmodel) : []
         scanTag(elem, vmodels)
+        //$init用来进行初始化操作
+        if (avalon.config.$init)
+            avalon.config.$init();
     }
 
 
@@ -1616,18 +1623,22 @@
     }
 
     //添加赋值语句
-
+    //改造addAssign，让其返回赋值结果和是否函数状态
     function addAssign(vars, scope, name) {
         var ret = [],
-                prefix = " = " + name + "."
+                prefix = " = " + name + ".",
+                is_funcs = {}
         for (var i = vars.length; name = vars[--i]; ) {
             name = vars[i]
             if (scope.hasOwnProperty(name)) {
                 ret.push(name + prefix + name)
                 vars.splice(i, 1)
+                //判断是否函数
+                if (typeof scope[name] === 'function')
+                    is_funcs[name] = true
             }
         }
-        return ret
+        return [ret, is_funcs]
 
     }
 
@@ -1649,7 +1660,11 @@
         })
     }
     //取得求值函数及其传参
-
+    
+    var events = ("dblclick,mouseout,click,mouseover,mouseenter,"
+        + "mouseleave,mousemove,mousedown,mouseup,keypress,"
+        + "keydown,keyup,blur,focus,change,animationend").split(',');
+    
     function parseExpr(code, scopes, data, setget) {
         if (setget) {
             var fn = Function("a", "b", "if(arguments.length === 2){\n\ta." + code + " = b;\n }else{\n\treturn a." + code + ";\n}")
@@ -1663,18 +1678,40 @@
                     originCode = code
             //args 是一个对象数组， names 是将要生成的求值函数的参数
             vars = uniqArray(vars), scopes = uniqArray(scopes, 1)
+            var vars_len = vars.length
+            var isfuncs = {}
             for (var i = 0, n = scopes.length; i < n; i++) {
                 if (vars.length) {
                     var name = "vm" + expose + "_" + i
                     names.push(name)
                     args.push(scopes[i])
-                    assigns.push.apply(assigns, addAssign(vars, scopes[i], name))
+                    var r = addAssign(vars, scopes[i], name)
+                    assigns.push.apply(assigns, r[0])
+                    avalon.mix(isfuncs, r[1]);
                 }
             }
+            
+            //处理单个函数不带括号的引用，如果是事件且code为函数，则自动在code之后加 ()
+            if (vars_len === 1 && code.charAt(code.length-1)!==')' && code in isfuncs)
+                code = code + '()';
+                
+            //如果是事件回调，则需要将函数调用变型为 func.call(this, args)
+            if (events.indexOf(data.type) !== -1){
+                var pos = code.indexOf('(')
+                if (pos !== -1){
+                    var func_name = code.slice(0, pos);
+                    var rest = code.slice(pos+1);
+                    code = func_name + '.call(this';
+                    if (rest !== ')') rest = ', '+rest;
+                    code = code + rest;
+                }
+            }
+            
             var prefix = assigns.join(", ")
             if (prefix) {
                 prefix = "var " + prefix
             }
+            
             if (data.filters) {
                 code = "\nvar ret" + expose + " = " + code
                 var textBuffer = [],
@@ -1707,7 +1744,7 @@
             }
         }
         try {
-            fn.apply(fn, args)
+//            fn.apply(fn, args)
             return [fn, args]
         } catch (e) {
             data.remove = false
@@ -1724,7 +1761,18 @@
                 var fn = array[0],
                         args = array[1]
                 updateView = function() {
-                    callback(fn.apply(fn, args), data.element)
+                    //应根据是事件函数还是一般函数来决定是否执行函数
+                    var result = fn;
+                    if (events.indexOf(data.type) === -1){
+                        try{
+                            result = fn.apply(fn, args);
+                        }catch (e){
+                            data.remove = false;
+                        }
+                    }
+                    else
+                        result = fn.partial.apply(fn, args);
+                    callback(result, data.element)
                 }
             }
         } else {
@@ -3304,6 +3352,19 @@
     avalon.ready(function() {
         avalon.scan(document.body)
     })
+    
+    //公共函数
+    Function.prototype.partial = function(){
+        var fn = this, args = Array.prototype.slice.call(arguments);
+        return function(){
+          var arg = 0;
+          for ( var i = 0; i < args.length && arg < arguments.length; i++ )
+            if ( args[i] === undefined )
+              args[i] = arguments[arg++];
+          return fn.apply(this, args);
+        };
+      };
+    
 })(document)
 //2012.8.31 完成 v1
 //https://github.com/RubyLouvre/mass-Framework/commit/708e203a0e274b69729d08de8fe1cde2722520d2
