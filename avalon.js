@@ -227,8 +227,9 @@
             function callback(e) {
                 var ex = e.target ? e : fixEvent(e || window.event)
 //                var ret = fn.call(el, e)
-                //绑定event对象到vmodel上
-                el.$vmodel.$event = ex;
+                //绑定event对象到vmodel上,$vmodel好象还不一定存在，比如checkbox?
+                if (el.$vmodel)
+                    el.$vmodel.$event = ex;
                 var ret = fn.call(el)
                 if (ret === false) {
                     ex.preventDefault()
