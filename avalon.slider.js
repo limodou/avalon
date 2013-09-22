@@ -1,4 +1,4 @@
-define(["avalon"], function(avalon) {
+define(["avalon.draggable"], function(avalon) {
     //判定是否触摸界面
     var defaults = {
         distance: 0,
@@ -14,8 +14,8 @@ define(["avalon"], function(avalon) {
 
     avalon.ui["slider"] = function(element, id, vmodels, opts) {
         var $element = avalon(element)
-        var options = avalon.mix({}, defaults)
-        avalon.mix(options, $element.data())
+        var options = avalon.mix({}, defaults, $element.data())
+
         var isHorizontal = options.orientation === "horizontal"
         //将整个slider划分为N等分, 比如100, 227
         var valueMin = options.min
@@ -39,19 +39,20 @@ define(["avalon"], function(avalon) {
         }
 
 
-        var handleHTML = '<a class="ui-slider-handle ui-state-default ui-corner-all"' +
+        var handleHTML = '<b class="ui-slider-handle ui-state-default ui-corner-all"' +
                 ' ms-css-' + (isHorizontal ? 'left' : 'bottom') + '="{{percent}}%"' +
                 ' data-axis=' + (isHorizontal ? 'x' : 'y') +
+                ' ms-draggable="dragend"' +
+                ' data-start="dragstart"' +
+                ' data-drag="drag"' +
+                ' data-drag-x="false"'+
+                ' data-drag-y="false"'+
                 ' data-containment="parent"' +
-                ' ms-draggable="drag"' +
-                ' data-movable="false"' +
-                ' data-dragstart="dragstart"' +
-                ' data-dragend="dragend"' +
-                ' ms-hover="ui-state-hover" href="javascript:void(0)" ></a>'
+                ' ms-hover="ui-state-hover"></b>'
         var rangeHTML = ' <div class="ui-slider-range ui-widget-header ui-corner-all"' +
                 ' ms-class-ui-slider-range-max="range === \'max\'" ' +
                 ' ms-class-ui-slider-range-min="range === \'min\'" ' +
-                (twohandlebars ? ' ms-css-' + (isHorizontal ? 'left' : 'bottom') + '="{{ percent0 }}%"' : "") +
+                (twohandlebars ? ' ms-css-' + (isHorizontal ? 'left' : 'bottom') + '=" percent0 +\'%\'"' : "") +
                 ' ms-css-' + (isHorizontal ? 'width' : 'height') + '="{{ range === \'max\'  ? 100 - percent : percent}}%"></div>'
         var sliderHTML = '<div class="ui-slider  ui-slider-' + options.orientation +
                 ' ui-widget ui-widget-content ui-corner-all" ' +
@@ -59,9 +60,11 @@ define(["avalon"], function(avalon) {
                 (oRange ? rangeHTML : "") + (twohandlebars ? handleHTML.replace("percent", "percent0") +
                 handleHTML.replace("percent", "percent1") : handleHTML) +
                 '</div>'
+      //  console.log( $element.data())
+    console.log(sliderHTML)
         domParser.innerHTML = sliderHTML
         var slider = domParser.removeChild(domParser.firstChild)
-        var a = slider.getElementsByTagName("a"), handlers = []
+        var a = slider.getElementsByTagName("b"), handlers = []
         for (var i = 0, el; el = a[i++]; ) {
             handlers.push(el)
         }
@@ -84,7 +87,7 @@ define(["avalon"], function(avalon) {
             var valModStep = val % step
             var n = val / step
             val = valModStep * 2 >= step ? step * Math.ceil(n) : step * Math.floor(n)
-            //   console.log(parseFloat(val.toFixed(3))+" step "+n)
+
             return parseFloat(val.toFixed(3))
         }
         var model = avalon.define(id, function(vm) {
@@ -94,19 +97,18 @@ define(["avalon"], function(avalon) {
             vm.percent1 = twohandlebars ? value2Percent(values[1]) : 0
             vm.value = twohandlebars ? values.join() : value
             vm.range = oRange
+           // console.log(vm.range)
             vm.values = values
             vm.dragstart = function(event, data) {
                 Index = handlers.indexOf(data.element)
                 data.$element.addClass("ui-state-active")
-                data.range[2] += this.clientWidth
-                data.range[3] += this.clientHeight
                 pixelTotal = isHorizontal ? slider.offsetWidth : slider.offsetHeight
             }
             vm.dragend = function(event, data) {
                 data.$element.removeClass("ui-state-active")
             }
             vm.drag = function(event, data) {
-                var prop = isHorizontal ? "left" : "top"
+                var prop = isHorizontal ? "left" : "top"       
                 var pixelMouse = data[prop]
                 //如果是垂直时,往上拖,值就越大
                 var percent = (pixelMouse / pixelTotal) //求出当前handler在slider的位置
@@ -119,26 +121,28 @@ define(["avalon"], function(avalon) {
                 if (percent < 0.01) {
                     percent = 0
                 }
+              
                 var val = percent2Value(percent)
                 if (twohandlebars) { //水平时，小的0在左边，大的1在右边，垂直时，大的0在下边，小的1在上边
                     if (Index === 0) {
-                        var check = vm.values[1]
+                        var check = model.values[1]
                         if (val > check) {
                             val = check
                         }
                     } else {
-                        check = vm.values[0]
+                        check = model.values[0]
                         if (val < check) {
                             val = check
                         }
                     }
-                    vm.values[Index] = val
-                    vm["percent" + Index] = value2Percent(val)
-                    vm.value = vm.values.join()
-                    vm.percent = value2Percent(vm.values[1] - vm.values[0])
+                    model.values[Index] = val
+                    model["percent" + Index] = value2Percent(val)
+                    model.value = model.values.join()
+                    model.percent = value2Percent(model.values[1] - model.values[0])
                 } else {
-                    vm.value = val
-                    vm.percent = value2Percent(val)
+                    model.value = val
+                // console.log(model.value)
+                    model.percent = value2Percent(val)
                 }
             }
 
