@@ -28,10 +28,10 @@
     "Boolean Number String Function Array Date RegExp Object Error".replace(rword, function(name) {
         class2type["[object " + name + "]"] = name.toLowerCase()
     })
-    var rwindow = /^[object (Window|DOMWindow|global)]$/
+
     var rnative = /\[native code\]/
     var rchecktype = /^(?:object|array)$/
-
+    var rwindow = /^[object (Window|DOMWindow|global)]$/
     function noop() {
     }
 
@@ -62,11 +62,10 @@
                 typeof obj
     }
     avalon.type = getType
+
     avalon.isWindow = function(obj) {
         if (!obj)
             return false
-        if (obj === window)
-            return true
         // 利用IE678 window == document为true,document == window竟然为false的神奇特性
         // 标准浏览器及IE9，IE19等使用 正则检测
         return obj == obj.document && obj.document != obj
@@ -1133,8 +1132,9 @@
     function updateViewModel(a, b, valueType) {
         //a为原来的VM， b为新数组或新对象
         if (valueType === "array") {
+            var bb = b.concat()
             a.clear()
-            a.push.apply(a, b)
+            a.push.apply(a, bb)
             return a
         } else {
             var added = [],
@@ -2650,15 +2650,15 @@
     //====================== each binding  =================================
     var withMapper = {}
     bindingHandlers["each"] = function(data, vmodels) {
-        var parent = data.element,
+        var elem = data.element,
                 list, updateView
         var array = parseExpr(data.value, vmodels, data)
         if (typeof array === "object") {
             list = array[0].apply(array[0], array[1])
         }
         var view = documentFragment.cloneNode(false)
-        while (parent.firstChild) {
-            view.appendChild(parent.firstChild)
+        while (elem.firstChild) {
+            view.appendChild(elem.firstChild)
         }
         data.template = view
         data.vmodels = vmodels
@@ -2678,6 +2678,7 @@
                 withIterator(method, pos, el, data, updateView.host)
             }
         }
+        updateView.element = elem
         updateView.host = list
         list[subscribers] && list[subscribers].push(updateView)
         updateView("add", list, 0)
@@ -2700,6 +2701,7 @@
                     var ii = i + pos
                     var proxy = createEachProxy(ii, arr[i], list, data.param)
                     var tview = data.template.cloneNode(true)
+                    proxy.$accessor.$last.get.element = tview
                     mapper.splice(ii, 0, proxy)
                     var base = typeof arr[i] === "object" ? [proxy, arr[i]] : [proxy]
                     scanNodes(tview, base.concat(data.vmodels))
@@ -2717,8 +2719,8 @@
                 removeView(locatedNode, group, el)
                 break
             case "index":
-                while (el = mapper[pos]) {
-                    el.$index = pos++
+                for (; el = mapper[pos]; pos++) {
+                    el.$index = pos
                 }
                 break
             case "clear":
@@ -2873,9 +2875,10 @@
             }
         }
         source.$remove = function() {
-            return list.removeAt(this.$index)
+            return list.removeAt(ret.$index)
         }
-        return modelFactory(source, 0, watchEachOne)
+        var ret = modelFactory(source, 0, watchEachOne)
+        return ret
     }
 
     /*********************************************************************
